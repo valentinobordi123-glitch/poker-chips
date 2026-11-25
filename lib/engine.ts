@@ -79,7 +79,8 @@ export function act(r: Room, id: string, a: Action) {
   else if (a.type === 'check') { if (need > 0) throw new Error('No puedes pasar'); r.log = `${p.name} pasa`; }
   else if (a.type === 'call') { const paid = Math.min(need, p.stack); put(p, need); r.log = `${p.name} iguala ${paid}`; }
   else {
-    const maxTo = p.bet + p.stack, to = Math.min(Math.round(a.to), maxTo);
+    if (a.type !== 'raise') return;
+const maxTo = p.bet + p.stack, to = Math.min(Math.round(a.to), maxTo);
     if (to <= r.currentBet) throw new Error('La subida debe superar la apuesta actual');
     const full = to - r.currentBet >= r.minRaise;
     if (!full && to < maxTo) throw new Error(`Subida mínima: ${r.currentBet + r.minRaise}`);
