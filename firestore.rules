@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    match /rooms/{code} {
+      function signedIn() { return request.auth != null; }
+      function isHost() { return request.auth.uid == resource.data.hostId; }
+      function member() { return request.auth.uid in resource.data.playerIds; }
+      function joining() {
+        return !(request.auth.uid in resource.data.playerIds)
+          && request.auth.uid in request.resource.data.playerIds
+          && request.resource.data.playerIds.size() == resource.data.playerIds.size() + 1;
+      }
+      // código, anfitrión, modo y configuración no cambian nunca
+      function frozen() {
+        return request.resource.data.code == resource.data.code
+          && request.resource.data.hostId == resource.data.hostId
+          && request.resource.data.mode == resource.data.mode
+          && request.resource.data.config == resource.data.config;
+      }
+      // solo el anfitrión inicia una mano (waiting → otra calle) y cierra el showdown
+      function hostTransitions() {
+        let o = resource.data.street; let n = request.resource.data.street;
+        return (o != 'waiting' || n == 'waiting' || isHost())
+          && (o != 'showdown' || n == 'showdown' || isHost());
+      }
+
+      allow get: if signedIn();          // hay que conocer el código; no se puede listar salas
+      allow list, delete: if false;      // el borrado lo hace el TTL de Firestore
+
+      allow create: if signedIn()
+        && code.matches('[A-Z]{4}')
+        && request.resource.data.code == code
+        && request.resource.data.mode in ['chips', 'cards']
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.playerIds == [request.auth.uid]
+        && request.resource.data.players.size() == 1
+        && request.resource.data.players[0].id == request.auth.uid
+        && request.resource.data.config.stack > 0 && request.resource.data.config.stack <= 1000000
+        && request.resource.data.config.sb > 0
+        && request.resource.data.config.bb >= request.resource.data.config.sb
+        && request.resource.data.players[0].stack == request.resource.data.config.stack
+        && request.resource.data.street == 'waiting' && request.resource.data.v == 0;
+
+      allow update: if signedIn()
+        && frozen()
+        && request.resource.data.v == resource.data.v + 1   // concurrencia optimista
+        && request.resource.data.playerIds.size() <= 10
+        && (member() || joining())
+        && hostTransitions();
+
+      // Cartas privadas (modo "cards"): rooms/{code}/private/{uid} y rooms/{code}/private/deck
+      match /private/{id} {
+        function roomHost() {
+          return get(/databases/$(db)/documents/rooms/$(code)).data.hostId == request.auth.uid;
+        }
+        // cada jugador lee SOLO su documento; el mazo solo lo lee el anfitrión (crupier)
+        allow get: if request.auth != null
+          && (request.auth.uid == id || (id == 'deck' && roomHost()));
+        allow list, delete: if false;
+        // solo el anfitrión reparte (escribe cartas privadas y mazo)
+        allow create, update: if request.auth != null && roomHost();
+      }
+    }
+  }
+}
+
