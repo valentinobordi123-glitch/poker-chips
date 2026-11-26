@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import MonetagAd from '@/components/MonetagAd';
 import { useRouter } from 'next/navigation';
 import { Spade, Plus, LogIn, Coins, Layers } from 'lucide-react';
 import { createRoom, mutate, useUid } from '@/lib/room';
@@ -83,6 +84,7 @@ export default function Lobby() {
           </section>
         )}
         {err && <p className="text-center text-red-400">{err}</p>}
+        <MonetagAd />
       </div>
     </main>
   );
